@@ -1,0 +1,13 @@
+[Unit]
+Description=pot
+After=network.target
+StartLimitIntervalSec=0
+[Service]
+Type=simple
+Restart=always
+RestartSec=1
+User=root
+ExecStart=npx tsx /pot/front/server
+
+[Install]
+WantedBy=multi-user.target

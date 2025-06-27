@@ -1,0 +1,860 @@
+Как установить и настроить прокси-сервер Squid в Ubuntu
+Рассказываем о том, как установить и настроить шлюзы сети. А также подробно разбираем установку и настройку прокси-сервера Squid.
+
+Введение
+В этому мануале рассмотрим установку и настройку прокси-сервера Squid. Инсталляцию установим на операционную систему Ubuntu 20.04 семейства Linux и коротко рассмотрим, как установить на Windows. Также в этой инструкции мы расскажем, как использовать сервер в качестве шлюза для сети.
+
+О Squid
+Это кэширующий прокси-сервер для интернета, поддерживающий HTTP, HTTPS, FTP и не только. Он снижает пропускную способность и улучшает время отклика за счет кэширования и повторного использования часто запрашиваемых веб-страниц.
+
+У Squid широкие возможности контроля доступа и он является отличным ускорителем сервера. Он работает на большинстве доступных операционных систем, включая Windows, и лицензируется по лицензии GNU GPL.
+
+По-простому 一 это прокси-сервер, посредник между клиентом (компьютером пользователя) и ресурсом (сайтом, сервером). Клиент отправляет запрос к ресурсу через прокси-сервер, который, в свою очередь, либо делает запрос от своего имени и возвращает ответ клиенту, либо берет его из кэша.
+
+Пример
+Отец отправляет ребенка в конкретный магазин за хлебом. Ребенок знает, где расположен магазин, идет и покупает хлеб от своего имени и несет хлеб домой. Это пример работы прокси-сервера с использованием кэша. Если немного изменить ситуацию и ребенок не знает, где магазин, он его находит и возвращается домой с хлебом. Это пример работы прокси-сервера без использования кэша. При правильной настройке ребенок запомнит местоположение магазина, а мы получим кэширующий прокси-сервер.
+
+Теперь следует немного разобраться с настройками сети в Ubuntu 20.04. В случае простой настройки прокси-сервера для анонимизации нам потребуется сервер с одним сетевым интерфейсом. В нашем случае сервер будет настроен как простой шлюз, через который будут проходить запросы клиентов, поэтому сетевых интерфейсов потребуется 2.
+
+Настройка сети
+Предварительная настройка сети
+Предварительно настроим сетевые интерфейсы. В используемой для создания мануала системе два физических сетевых интерфейса: eth0 и eth1. Они будут настроены следующим образом: eth0 будем использовать для работы в сети интернет, а eth1 настроим на взаимодействие с локальной сетью. Настройку производим с использованием утилиты Netplan. Этот инструмент является предпочтительным начиная с релиза Ubuntu 17.10. Настройка происходит методом создания файла конфигурации формата yaml. Создадим файл конфигурации:
+
+
+    sudo nano /etc/netplan/02-networkd.yaml
+И установим следующие настройки:
+
+
+    network:
+  version: 2
+  renderer: networkd
+  ethernets:
+    eth0:
+      dhcp4: true
+    eth1:
+      dhcp4: false
+      addresses : [192.168.0.1/24]
+      nameservers:
+          addresses: [8.8.8.8]
+
+Yaml требует строгого соблюдения пробелов, отступов и табуляции. Очень важно это учитывать при составлении файла конфигурации. Для интерфейса eth0 установлено получение адреса по dhcp, интерфейсу eth1 назначен статический IP-адрес. Проверим конфигурацию на валидность командой:
+
+
+    sudo netplan --debug generate
+При наличии ошибок, необходимо исправить. Если все верно, применяем конфигурацию командой:
+
+
+    sudo netplan --debug apply
+Применить конфигурацию без вывода ошибок можно так:
+
+
+    sudo netplan apply
+DHCP
+Для получения адресов в сети за шлюзом динамически используется DHCP-сервер. В данном случае будут выдаваться адреса клиентам, которые подключены через интерфейс eth1. Инсталляция DHCP-сервера происходит с использованием команды:
+
+
+    sudo apt install isc-dhcp-server -y
+Опция -y используется для положительных ответов во время установки. Вывод:
+
+
+    Reading package lists... Done
+Building dependency tree
+Reading state information... Done
+The following additional packages will be installed:
+  libirs-export161 libisccfg-export163
+Suggested packages:
+  isc-dhcp-server-ldap policycoreutils
+Recommended packages:
+  isc-dhcp-common
+The following NEW packages will be installed:
+  isc-dhcp-server libirs-export161 libisccfg-export163
+0 upgraded, 3 newly installed, 0 to remove and 0 not upgraded.
+Need to get 519 kB of archives.
+After this operation, 1865 kB of additional disk space will be used.
+Do you want to continue? [Y/n] ^C
+vlan48@apachi:~$ sudo apt install isc-dhcp-server -y
+Reading package lists... Done
+Building dependency tree
+Reading state information... Done
+The following additional packages will be installed:
+  libirs-export161 libisccfg-export163
+Suggested packages:
+  isc-dhcp-server-ldap policycoreutils
+Recommended packages:
+  isc-dhcp-common
+The following NEW packages will be installed:
+  isc-dhcp-server libirs-export161 libisccfg-export163
+0 upgraded, 3 newly installed, 0 to remove and 0 not upgraded.
+Need to get 519 kB of archives.
+After this operation, 1865 kB of additional disk space will be used.
+Get:1 http://mirror.selectel.ru/ubuntu focal-updates/main amd64 libisccfg-export163 amd64 1:9.11.16+dfsg-3~ubuntu1 [45.9 kB]
+Get:2 http://mirror.selectel.ru/ubuntu focal-updates/main amd64 libirs-export161 amd64 1:9.11.16+dfsg-3~ubuntu1 [18.6 kB]
+Get:3 http://mirror.selectel.ru/ubuntu focal-updates/main amd64 isc-dhcp-server amd64 4.4.1-2.1ubuntu5.20.04.2 [455 kB]
+Fetched 519 kB in 0s (5765 kB/s)
+Preconfiguring packages ...
+Selecting previously unselected package libisccfg-export163.
+(Reading database ... 54507 files and directories currently installed.)
+Preparing to unpack .../libisccfg-export163_1%3a9.11.16+dfsg-3~ubuntu1_amd64.deb ...
+Unpacking libisccfg-export163 (1:9.11.16+dfsg-3~ubuntu1) ...
+Selecting previously unselected package libirs-export161.
+Preparing to unpack .../libirs-export161_1%3a9.11.16+dfsg-3~ubuntu1_amd64.deb ...
+Unpacking libirs-export161 (1:9.11.16+dfsg-3~ubuntu1) ...
+Selecting previously unselected package isc-dhcp-server.
+Preparing to unpack .../isc-dhcp-server_4.4.1-2.1ubuntu5.20.04.2_amd64.deb ...
+Unpacking isc-dhcp-server (4.4.1-2.1ubuntu5.20.04.2) ...
+Setting up libisccfg-export163 (1:9.11.16+dfsg-3~ubuntu1) ...
+Setting up libirs-export161 (1:9.11.16+dfsg-3~ubuntu1) ...
+Setting up isc-dhcp-server (4.4.1-2.1ubuntu5.20.04.2) ...
+Generating /etc/default/isc-dhcp-server...
+Created symlink /etc/systemd/system/multi-user.target.wants/isc-dhcp-server.service → /lib/systemd/system/isc-dhcp-server.service.
+Created symlink /etc/systemd/system/multi-user.target.wants/isc-dhcp-server6.service → /lib/systemd/system/isc-dhcp-server6.service.
+Processing triggers for man-db (2.9.1-1) ...
+Processing triggers for libc-bin (2.31-0ubuntu9.2) ...
+Processing triggers for systemd (245.4-4ubuntu3.13) …
+
+После установки отредактируем файл конфигурации DHCP-сервера, который находится: /etc/dhcp/dhcpd.conf.
+
+Отправляем команду:
+
+
+    sudo nano /etc/dhcp/dhcpd.conf
+Файл конфигурации по умолчанию выглядит так:
+
+
+    # dhcpd.conf
+#
+# Sample configuration file for ISC dhcpd
+#
+# Attention: If /etc/ltsp/dhcpd.conf exists, that will be used as
+# configuration file instead of this file.
+#
+
+# option definitions common to all supported networks...
+option domain-name "example.org";
+option domain-name-servers ns1.example.org, ns2.example.org;
+
+default-lease-time 600;
+max-lease-time 7200;
+
+# The ddns-updates-style parameter controls whether or not the server will
+# attempt to do a DNS update when a lease is confirmed. We default to the
+# behavior of the version 2 packages ('none', since DHCP v2 didn't
+# have support for DDNS.)
+ddns-update-style none;
+
+# If this DHCP server is the official DHCP server for the local
+# network, the authoritative directive should be uncommented.
+#authoritative;
+
+# Use this to send dhcp log messages to a different log file (you also
+# have to hack syslog.conf to complete the redirection).
+#log-facility local7;
+
+# No service will be given on this subnet, but declaring it helps the
+# DHCP server to understand the network topology.
+
+#subnet 10.152.187.0 netmask 255.255.255.0 {
+#}
+
+# This is a very basic subnet declaration.
+
+#subnet 10.254.239.0 netmask 255.255.255.224 {
+#  range 10.254.239.10 10.254.239.20;
+#  option routers rtr-239-0-1.example.org, rtr-239-0-2.example.org;
+#}
+
+# This declaration allows BOOTP clients to get dynamic addresses,
+# which we don't really recommend.
+#subnet 10.254.239.32 netmask 255.255.255.224 {
+#  range dynamic-bootp 10.254.239.40 10.254.239.60;
+#  option broadcast-address 10.254.239.31;
+#  option routers rtr-239-32-1.example.org;
+#}
+
+# A slightly different configuration for an internal subnet.
+#subnet 10.5.5.0 netmask 255.255.255.224 {
+#  range 10.5.5.26 10.5.5.30;
+#  option domain-name-servers ns1.internal.example.org;
+#  option domain-name "internal.example.org";
+#  option subnet-mask 255.255.255.224;
+#  option routers 10.5.5.1;
+#  option broadcast-address 10.5.5.31;
+#  default-lease-time 600;
+#  max-lease-time 7200;
+#}
+
+# Hosts which require special configuration options can be listed in
+# host statements.   If no address is specified, the address will be
+# allocated dynamically (if possible), but the host-specific information
+# will still come from the host declaration.
+
+#host passacaglia {
+#  hardware ethernet 0:0:c0:5d:bd:95;
+#  filename "vmunix.passacaglia";
+#  server-name "toccata.example.com";
+#}
+
+# Fixed IP addresses can also be specified for hosts.   These addresses
+# should not also be listed as being available for dynamic assignment.
+# Hosts for which fixed IP addresses have been specified can boot using
+# BOOTP or DHCP.   Hosts for which no fixed address is specified can only
+# be booted with DHCP, unless there is an address range on the subnet
+# to which a BOOTP client is connected which has the dynamic-bootp flag
+# set.
+#host fantasia {
+#  hardware ethernet 08:00:07:26:c0:a5;
+#  fixed-address fantasia.example.com;
+#}
+
+# You can declare a class of clients and then do address allocation
+# based on that.   The example below shows a case where all clients
+# in a certain class get addresses on the 10.17.224/24 subnet, and all
+# other clients get addresses on the 10.0.29/24 subnet.
+#class "foo" {
+#  match if substring (option vendor-class-identifier, 0, 4) = "SUNW";
+#}
+
+#shared-network 224-29 {
+#  subnet 10.17.224.0 netmask 255.255.255.0 {
+#    option routers rtr-224.example.org;
+#  }
+#  subnet 10.0.29.0 netmask 255.255.255.0 {
+#    option routers rtr-29.example.org;
+#  }
+#  pool {
+#    allow members of "foo";
+#    range 10.17.224.10 10.17.224.250;
+#  }
+#  pool {
+#    deny members of "foo";
+#    range 10.0.29.10 10.0.29.230;
+#  }
+#}
+Добавим в конфигурацию вот такой блок директив:
+
+subnet 192.168.0.0 netmask 255.255.255.0 {
+  range 192.168.0.50 192.168.0.250; 
+  option domain-name-servers 8.8.8.8;
+  option domain-name "selectel.loc"; 
+  option routers 192.168.0.1; 
+  default-lease-time 7200; 
+  max-lease-time 7200; 
+}
+subnet 192.168.0.0 netmask 255.255.255.0 — подсеть, в которой будет работать DHCP;
+range 192.168.0.50 192.168.0.250; — диапазон выдаваемыех ip-адресов;
+option domain-name-servers 8.8.8.8; — dns-сервер;
+option domain-name «selectel.loc»; — домен;
+option routers 192.168.0.1; — шлюз;
+default-lease-time 7200; — время аренды IP-адреса;
+max-lease-time 7200; — максимальное время аренды IP-адреса.
+В настраиваемой системе два сетевых интерфейса, поэтому в файле /etc/default/isc-dhcp-server необходимо указать интерфейс через который будет происходить выдача адресов DHPC-сервером.
+
+
+    sudo nano /etc/default/isc-dhcp-server
+Файл в дефолтном виде выглядит вот так:
+
+# Defaults for isc-dhcp-server (sourced by /etc/init.d/isc-dhcp-server)
+
+# Path to dhcpd's config file (default: /etc/dhcp/dhcpd.conf).
+#DHCPDv4_CONF=/etc/dhcp/dhcpd.conf
+#DHCPDv6_CONF=/etc/dhcp/dhcpd6.conf
+
+# Path to dhcpd's PID file (default: /var/run/dhcpd.pid).
+#DHCPDv4_PID=/var/run/dhcpd.pid
+#DHCPDv6_PID=/var/run/dhcpd6.pid
+
+# Additional options to start dhcpd with.
+#       Don't use options -cf or -pf here; use DHCPD_CONF/ DHCPD_PID instead
+#OPTIONS=""
+
+# On what interfaces should the DHCP server (dhcpd) serve DHCP requests?
+#       Separate multiple interfaces with spaces, e.g. "eth0 eth1".
+INTERFACESv4=""
+INTERFACESv6=""
+Исправим строку INTERFACESv4=»», добавив сюда сетевой интерфейс. INTERFACESv4=»eth1″.
+
+Команды, которые пригодятся при работе с DHCP-сервером.
+
+Для запуска сервера:
+
+
+    sudo /etc/init.d/isc-dhcp-server start
+Для остановки сервера:
+
+
+    sudo /etc/init.d/isc-dhcp-server stop 
+Для перезапуска сервера:
+
+
+    sudo /etc/init.d/isc-dhcp-server restart
+Запустим DHCP-сервер командой, указанной выше.
+
+Вывод:
+
+
+    Starting isc-dhcp-server (via systemctl): isc-dhcp-server.service.
+Теперь в локальной сети клиенты будут получать IP-адреса из пула 192.168.0.50-192.168.0.250. Специально оставляем адреса 192.168.0.2-192.168.0.49 для использования их в будущем в качестве статических на ресурсах локальной сети, на которых статика необходима. 
+
+NAT
+NAT позволяет осуществлять выход в интернет с использованием одного публичного IP-адреса, множеством клиентов локальной сети. Первое, что требуется сделать, включить прохождение трафика между сетевыми интерфейсами сервера. По умолчанию IP forwarding выключен. Оценить состояние можно, проверив его файл с настройками, он расположен по следующему пути:
+
+
+    /proc/sys/net/ipv4/ip_forward
+Для проверки используется утилита cat. При ее использовании в консоли отображается наполнение файла, который она просматривает.
+
+
+    cat /proc/sys/net/ipv4/ip_forward
+
+Вывод по умолчанию: 
+
+
+    0
+Это подтверждает, что forwarding выключен. Включить его можно, изменив в файле конфигурации 0 на 1. Самый простой способ, который не сохраняет изменения после перезагрузки:
+
+
+    echo 1 | sudo tee /proc/sys/net/ipv4/ip_forward 
+
+Проверяем:
+
+
+    cat /proc/sys/net/ipv4/ip_forward
+
+Вывод:
+
+
+    1
+Чтобы установить значение которое не вернется к 0 после перезагрузки необходимо отредактировать файл ip_forward.
+
+
+    sudo nano /proc/sys/net/ipv4/ip_forward
+
+Установим значение 1 и сохраним.
+
+Теперь настраиваем брандмауэр. Перед добавлением правил установим плагин iptables, чтобы не возникло необходимости добавлять правила в автозагрузку.
+
+
+    sudo apt install iptables-persistent -y
+Вывод:
+
+
+    Reading package lists... Done
+Building dependency tree
+Reading state information... Done
+The following NEW packages will be installed:
+  iptables-persistent
+0 upgraded, 1 newly installed, 0 to remove and 0 not upgraded.
+Need to get 6496 B of archives.
+After this operation, 48.1 kB of additional disk space will be used.
+Get:1 http://mirror.selectel.ru/ubuntu focal/universe amd64 iptables-persistent all 1.0.14 [6496 B]
+Fetched 6496 B in 0s (442 kB/s)
+Preconfiguring packages ...
+Selecting previously unselected package iptables-persistent.
+(Reading database ... 54557 files and directories currently installed.)
+Preparing to unpack .../iptables-persistent_1.0.14_all.deb ...
+Unpacking iptables-persistent (1.0.14) ...
+Setting up iptables-persistent (1.0.14) ...
+update-alternatives: using /lib/systemd/system/netfilter-persistent.service to provide /lib/systemd/system/iptables.service (iptables.service) in auto mode
+
+Добавим правила для работы NAT.
+
+
+    sudo iptables -t nat -A POSTROUTING -o eth0 -s 192.168.0.1/24 -j MASQUERADE
+
+    sudo iptables -A FORWARD -i eth0 -m state --state ESTABLISHED,RELATED -j ACCEPT
+И сохраним их:
+
+
+    sudo netfilter-persistent save
+Вывод:
+
+
+    run-parts: executing /usr/share/netfilter-persistent/plugins.d/15-ip4tables save
+run-parts: executing /usr/share/netfilter-persistent/plugins.d/25-ip6tables save
+Настройка Squid
+Команды управления процессом
+Прежде чем установить прокси-сервер Squid, необходимо ознакомиться с командами управления процессом, а также с директориями важных файлов.
+
+Запуск демона Squid:
+
+
+    sudo systemctl start squid
+Статус:
+
+
+    sudo systemctl status squid 
+Добавить демона Squid в автозагрузку:
+
+
+    sudo systemctl enable squid
+Перезапустить:
+
+
+    sudo systemctl restart squid
+Остановить процесс Squid:
+
+
+    sudo systemctl stop squid
+Убрать из автозагрузки:
+
+
+    sudo systemctl disable squid
+Важные файлы и директории рассмотрены далее в инструкции, основные моменты настройки и проверки будут произведены с их использованием:
+
+/etc/squid/squid.conf 一 основной файл конфигурации Squid;
+/var/log/squid/access.log 一 файл доступа;
+/var/log/squid/cache.log 一 лог кэша.
+Установка Squid
+Теперь перейдем непосредственно к установке. Отправим в терминал команду:
+
+
+    sudo apt -y install squid -y
+
+Вывод процесса установки:
+
+
+    Reading package lists... Done
+Building dependency tree
+Reading state information... Done
+The following additional packages will be installed:
+  libdbi-perl libecap3 squid-common squid-langpack
+Suggested packages:
+  libclone-perl libmldbm-perl libnet-daemon-perl libsql-statement-perl squidclient squid-cgi squid-purge
+  smbclient ufw winbind
+The following NEW packages will be installed:
+  libdbi-perl libecap3 squid squid-common squid-langpack
+0 upgraded, 5 newly installed, 0 to remove and 0 not upgraded.
+Need to get 3670 kB of archives.
+After this operation, 15.7 MB of additional disk space will be used.
+Get:1 http://mirror.selectel.ru/ubuntu focal/main amd64 libecap3 amd64 1.0.1-3.2ubuntu1 [17.4 kB]
+Get:2 http://mirror.selectel.ru/ubuntu focal/main amd64 squid-langpack all 20191103-1 [167 kB]
+Get:3 http://mirror.selectel.ru/ubuntu focal-updates/main amd64 squid-common all 4.10-1ubuntu1.5 [194 kB]
+Get:4 http://mirror.selectel.ru/ubuntu focal-updates/main amd64 libdbi-perl amd64 1.643-1ubuntu0.1 [730 kB]
+Get:5 http://mirror.selectel.ru/ubuntu focal-updates/main amd64 squid amd64 4.10-1ubuntu1.5 [2562 kB]
+Fetched 3670 kB in 0s (21.2 MB/s)
+Selecting previously unselected package libecap3:amd64.
+(Reading database ... 54563 files and directories currently installed.)
+Preparing to unpack .../libecap3_1.0.1-3.2ubuntu1_amd64.deb ...
+Unpacking libecap3:amd64 (1.0.1-3.2ubuntu1) ...
+Selecting previously unselected package squid-langpack.
+Preparing to unpack .../squid-langpack_20191103-1_all.deb ...
+Unpacking squid-langpack (20191103-1) ...
+Selecting previously unselected package squid-common.
+Preparing to unpack .../squid-common_4.10-1ubuntu1.5_all.deb ...
+Unpacking squid-common (4.10-1ubuntu1.5) ...
+Selecting previously unselected package libdbi-perl:amd64.
+Preparing to unpack .../libdbi-perl_1.643-1ubuntu0.1_amd64.deb ...
+Unpacking libdbi-perl:amd64 (1.643-1ubuntu0.1) ...
+Selecting previously unselected package squid.
+Preparing to unpack .../squid_4.10-1ubuntu1.5_amd64.deb ...
+proxy:x:13:13:proxy:/bin:/usr/sbin/nologin
+Unpacking squid (4.10-1ubuntu1.5) ...
+Setting up squid-langpack (20191103-1) ...
+Setting up libdbi-perl:amd64 (1.643-1ubuntu0.1) ...
+Setting up libecap3:amd64 (1.0.1-3.2ubuntu1) ...
+Setting up squid-common (4.10-1ubuntu1.5) ...
+Setting up squid (4.10-1ubuntu1.5) ...
+Setcap worked! /usr/lib/squid/pinger is not suid!
+Skipping profile in /etc/apparmor.d/disable: usr.sbin.squid
+Created symlink /etc/systemd/system/multi-user.target.wants/squid.service → /lib/systemd/system/squid.service.
+Processing triggers for systemd (245.4-4ubuntu3.13) ...
+Processing triggers for man-db (2.9.1-1) ...
+Processing triggers for libc-bin (2.31-0ubuntu9.2) ...
+
+Для начала нас интересует основной файл конфигурации. Он большой, чтобы полностью его читать, но если хочется подсчитать количество строк, можно использовать вот такую команду:
+
+
+    wc -l /etc/squid/squid.conf
+Вывод:
+
+
+    8586 /etc/squid/squid.conf
+Копируем файл, чтобы сохранить стандартную конфигурацию на случай непредвиденных обстоятельств.
+
+
+    sudo cp /etc/squid/squid.conf /etc/squid/squid_back.conf
+
+Вывести из файла все не закомментированные строки можно с использованием команды:
+
+
+    grep -v '^ *#\|^ *$' /etc/squid/squid.conf
+
+Вывод:
+
+
+    acl localnet src 0.0.0.1-0.255.255.255  # RFC 1122 "this" network (LAN)
+acl localnet src 10.0.0.0/8             # RFC 1918 local private network (LAN)
+acl localnet src 100.64.0.0/10          # RFC 6598 shared address space (CGN)
+acl localnet src 169.254.0.0/16         # RFC 3927 link-local (directly plugged) machines
+acl localnet src 172.16.0.0/12          # RFC 1918 local private network (LAN)
+acl localnet src 192.168.0.0/16         # RFC 1918 local private network (LAN)
+acl localnet src fc00::/7               # RFC 4193 local private network range
+acl localnet src fe80::/10              # RFC 4291 link-local (directly plugged) machines
+acl SSL_ports port 443
+acl Safe_ports port 80          # http
+acl Safe_ports port 21          # ftp
+acl Safe_ports port 443         # https
+acl Safe_ports port 70          # gopher
+acl Safe_ports port 210         # wais
+acl Safe_ports port 1025-65535  # unregistered ports
+acl Safe_ports port 280         # http-mgmt
+acl Safe_ports port 488         # gss-http
+acl Safe_ports port 591         # filemaker
+acl Safe_ports port 777         # multiling http
+acl CONNECT method CONNECT
+http_access deny !Safe_ports
+http_access deny CONNECT !SSL_ports
+http_access allow localhost manager
+http_access deny manager
+include /etc/squid/conf.d/*
+http_access allow localhost
+http_access deny all
+http_port 3128
+coredump_dir /var/spool/squid
+refresh_pattern ^ftp:           1440    20%     10080
+refresh_pattern ^gopher:        1440    0%      1440
+refresh_pattern -i (/cgi-bin/|\?) 0     0%      0
+refresh_pattern \/(Packages|Sources)(|\.bz2|\.gz|\.xz)$ 0 0% 0 refresh-ims
+refresh_pattern \/Release(|\.gpg)$ 0 0% 0 refresh-ims
+refresh_pattern \/InRelease$ 0 0% 0 refresh-ims
+refresh_pattern \/(Translation-.*)(|\.bz2|\.gz|\.xz)$ 0 0% 0 refresh-ims
+refresh_pattern .               0       20%     4320
+
+Перезаписать файл только строками без комментариев можно вот так:
+
+
+    sudo  grep -v '^ *#\|^ *$' /etc/squid/squid.conf > ~/squid.conf
+sudo cp ~/squid.conf /etc/squid/squid.conf  
+
+Теперь можно добавить Squid в автозагрузку командой:
+
+
+    sudo systemctl enable squid
+Проверить состояние возможно отправкой следующей команды:
+
+
+    sudo systemctl status squid
+Вывод:
+
+
+    ● squid.service - Squid Web Proxy Server
+     Loaded: loaded (/lib/systemd/system/squid.service; enabled; vendor preset: enabled)
+     Active: active (running) since Wed 2021-11-17 12:24:31 UTC; 49min ago
+       Docs: man:squid(8)
+   Main PID: 3313 (squid)
+      Tasks: 4 (limit: 1105)
+     Memory: 15.9M
+     CGroup: /system.slice/squid.service
+             ├─3313 /usr/sbin/squid -sYC
+             ├─3315 (squid-1) --kid squid-1 -sYC
+             ├─3343 (logfile-daemon) /var/log/squid/access.log
+             └─3347 (pinger)
+
+Nov 17 12:24:31 apachi squid[3315]: Finished loading MIME types and icons.
+Nov 17 12:24:31 apachi squid[3315]: HTCP Disabled.
+Nov 17 12:24:31 apachi squid[3315]: Pinger socket opened on FD 14
+Nov 17 12:24:31 apachi squid[3315]: Squid plugin modules loaded: 0
+Nov 17 12:24:31 apachi squid[3315]: Adaptation support is off.
+Nov 17 12:24:31 apachi squid[3315]: Accepting HTTP Socket connections at local=[::]:3128 remote=[::] FD 12 flags=9
+Nov 17 12:24:32 apachi squid[3315]: storeLateRelease: released 0 objects
+Nov 17 13:09:57 apachi squid[3315]: Logfile: opening log stdio:/var/spool/squid/netdb.state
+Nov 17 13:09:57 apachi squid[3315]: Logfile: closing log stdio:/var/spool/squid/netdb.state
+Nov 17 13:09:57 apachi squid[3315]: NETDB state saved; 0 entries, 0 msec
+
+Основные настройки Squid
+Прежде чем начнется изменение файла конфигурации, соберем немного важной информации, которая касается логики обработки файла конфигурации при выполнении программы. 
+
+Конфигурация обрабатывается построчно как при работе правил файрвола. Если поставить запрещающую строку выше разрешающей, то работа будет неправильной. 
+В файле конфигурации есть строка http_port 3128,  в этой строке указывается порт, на котором работает сервис, а также в этой директиве можно указать IP-адрес, который станет слушать подключения. Если интерфейс прослушивания не указать, то Squid слушает все существующие интерфейсы. 
+В рамках этой инструкции изменение порта и интерфейса нас не интересуют, перейдем к дальнейшей настройке. Для работы Squid используются списки контроля доступа (ACL). Синтаксис списка доступа следующий: acl имя_списка параметр содержимое.
+
+Таким образом строка: acl localnet src 172.16.0.0/12 добавляет список с именем localnet, в котором объявляется пул IP-адресов (172.16.0.0-172.31.255.255) для входящих соединений (параметр src). Список адресов можно создать также с помощью отдельного файла, в рамках этой инструкции в этом нет необходимости, но знать об этом стоит. 
+
+Для обработки списков контроля доступа используется директива http_access. Синтаксис выглядит следующим образом:
+
+
+    http_access инструкция acl
+Разберем пример на списке доступа с именем localnet:
+
+
+    http_access allow localnet
+
+Разрешает доступ к прокси-серверу, списку с именем localnet.
+
+Настройка прозрачного прокси-сервера
+На данном этапе настроим прокси-сервер для работы в прозрачном режиме. Само понятие прозрачный прокси-сервер подразумевает собой настройку сервера таким образом, чтобы клиенту не пришлось вносить никаких правок в свой интернет-обозреватель. Правила прокси-сервера будут работать для этой рабочей станции без участия пользователя в этом процессе. Продолжим редактировать основной файл конфигурации. Для настройки Squid в прозрачном режиме вернемся в директиве http_port и изменим ее следующим образом:
+
+
+    http_port 192.168.0.1:3128 intercept
+
+Применив указанную директиву, прокси-сервер станет слушать порт 3128 на сетевом интерфейсе с IP-адресом 192.168.0.1. Параметр intercept  включает работу прокси в прозрачном режиме.
+
+Параметры acl-листа
+Продолжим настройку и разберемся более детально со списками и указаниями. В acl-листе возможно выставить множество указаний, в том числе с использованием регулярных выражений для более тонкой настройки прокси-сервера. Разберем некоторые из них.
+
+Src 
+Один из первых параметров, который разберем 一 src. Он указывает адрес источника, с которого пришел запрос. Адресов может быть несколько, например:
+
+
+    acl Client1 src 172.16.0.100 
+
+В данном случае в acl-лист Client1 будет добавлен адрес 172.16.0.100 для обработки при входящем соединении. Это пример для одного IP-адреса.
+
+Следующий пример для нескольких:
+
+
+    acl PoolUs src 172.16.0.1-172.16.0.255
+или
+
+
+    acl PoolUs src 172.16.0.0/24
+
+Пул IP-адресов возможно указать в разных форматах, как показано на примере.
+
+Dst
+По похожему принципу работает параметр dst.  Только обрабатывает он ресурсы, к которым клиент пытается получить доступ. Вот так выглядит синтаксис:
+
+
+    acl drovSrv dst 172.16.0.11 
+Где drovSrv 一 имя создаваемого списка, dst 一 обрабатываемое направление, 172.16.0.11 一 IP-адрес, к которому обращается клиент. 
+
+Пример приведен для обработки одного адреса. Для пула адресов синтаксис выглядит так:
+
+
+    acl drovSrv dst 172.16.0.1-172.16.0.255
+
+    acl drovSrv dst 172.16.0.0/24 
+
+Следующий параметр dstdomain указывает домен, к которому пытается обратиться клиент. 
+
+Синтаксис:
+
+
+    acl accessRes dstdomain .temp.ru 
+
+Можно указать один или несколько доменов в списке.
+
+Srcdomain
+При появлении задачи с указанием домена источника требуется использовать srcdomain. Синтаксис выглядит следующим образом:
+
+
+    acl dropRes srcdomain .temp.ru 
+
+В некоторых случаях удобнее использовать параметры dstdom_regex или srcdom_regex. Они удобны тем, что позволяют использовать регулярные выражения.
+
+
+    acl org srcdom_regex \.org$ 
+Например, весь домен .org.
+
+Url_regex 
+Параметр url_regex позволяет обработать шаблон регулярного выражения в ссылке.
+
+
+    acl videosAvi url_regex \.avi$
+
+
+Директива, указанная в примере, позволяет добавить в acl-список для обработки видеофайлы формата avi. Очень удобно использовать url_regex с ключом -i , так как он позволяет игнорировать регистр символов при использовании регулярных выражений.
+
+Proto и port
+Теперь рассмотрим параметр для протоколов proto и портов port. Его синтаксис: 
+
+
+    acl exa proto http 
+В примере выше обрабатываются обращения по протоколу http.
+
+Следующая директива port позволяет обработать один или несколько портов.
+
+Для одного:
+
+
+    acl eth port 80
+Для нескольких:
+
+
+    acl eth port 475-556
+Time
+Еще одна важная директива, которую следует рассмотреть: time.
+
+Синтаксис:
+
+
+    acl timeCom time days hh:mm-hh:mm
+
+Проще всего понять принцип работы этой директиве на примере:
+
+
+    acl timeCom time MTWHF 12:00-13:00 
+В приведенном выше списке добавлена неделя с понедельника по пятницу, со временем с 12:00 до 13:00.
+
+Параметры для тонкой настройки
+На данном этапе разобраны основные типы элементов acl. Есть еще некое количество элементов, которые понимает Squid, но в этой инструкции они не описываются, т.к используются для более профессиональной настройки. 
+
+Ниже приведем краткий список, чтобы было понимание, что можно найти и использовать помимо основных.
+
+myip 一 локальный IP-адрес клиентского соединения;
+urlpath_regex 一 шаблон регулярного выражения для части URL, исключая протокол и имя хоста;
+myport 一 номер локального порта, куда подключается клиент;
+browser 一 шаблон регулярного выражения, совпадающего с заголовком user-agent из запроса;
+ident 一 строка совпадения с именем пользователя;
+req_mime_type 一 шаблон регулярного выражения для заголовка content-type запроса;
+arp 一 Ethernet MAC-адрес;
+ident_regex 一 шаблон регулярного выражения имени пользователя;
+src_as 一 номер автономной системы источника (клиент);
+dst_as 一 номер автономной системы назначения (сервер);
+proxy_auth 一 аутентификация пользователя через внешний процесс;
+proxy_auth_regex 一 регулярное выражение аутентификации пользователя через внешний процесс;
+snmp_community 一 строка SNMP-сообщества;
+maxconn 一 ограничение максимального количества соединений с одного клиентского IP-адреса,
+arp 一 Ethernet (MAC)-адрес.
+Правила доступа
+Теперь разберем типы правил доступа. Для начала немного о самой логике и принципах работы правил доступа. 
+
+Правило состоит из указания deny или allow с указанием имени списка контроля доступа. 
+В правиле возможно использование одного или нескольких списков контроля доступа. 
+При использовании нескольких acl в правиле использовано логическое «И». Следует это учитывать при добавлении элементов, т.к правило не сработает если верно только одно значение.
+Проверка происходит построчно.
+Отличным вариантом является запретить все, кроме того что разрешено. 
+Синтаксис правил доступа следующий:
+
+
+    http_access  allow acl 
+где http_access  一 тип правила доступа; 
+allow 一 указание;
+acl 一 имя списка контроля доступа.
+Тем самым правило http_access  allow Client1 разрешает доступ acl с именем Client1. При комбинировании acl/правило всегда следует помнить, что список контроля доступа использует логическое «ИЛИ», а в правиле используется логическое «И». Тем самым, вот такое правило синтаксически создать можно, но работать оно не будет.
+
+
+    acl sr_pc1 172.16.0.11
+acl sr_srv 172.16.0.222
+http_access allow sr_pc1 sr_srv
+
+Есть несколько путей решения. Первый 一 добавить IP-адреса в один acl.
+
+
+    acl sr_pc1_a_srv 172.16.0.11 172.16.0.222
+http_access allow sr_pc1_a_srv
+Второй 一 создать 2 отдельных правила.
+
+
+    acl sr_pc1 172.16.0.11
+acl sr_srv 172.16.0.222
+http_access allow sr_pc1
+http_access allow sr_srv
+
+В большинстве случаев используется именно тип правила http_access.
+
+Далее будут перечислены некоторые типы списков доступа, которые не будут раскрыты в этой инструкции, но знание об их существовании в дальнейшем может потребоваться.
+
+no_cache 一 объявляет ответы, которые не будет попадать в кэш;
+redirector_access 一 проверяет, какие запросы должны пройти через процесс редиректор;
+miss_access 一 разрешает неким клиентам передавать cache misses через ваш кэш;
+always_direct 一 контролирует, какие запросы всегда должны посылаться напрямую к серверу назначения;
+never_direct 一 проверяет запросы, которые никогда не должны посылаться напрямую к серверу назначения;
+snmp_access 一 контролирует доступ клиентов к кэшу по SNMP;
+broken_posts 一 определяет запросы, для которых squid добавляет дополнительный CRLF после сообщений POST как требуют некоторые неправильно функционирующие сервера.
+cache_peer_access 一 контролирует, какие запросы должны быть переданы соседскому кэшу (peer).
+Ограничение скорости
+В Squid ограничение скорости настраивается с использованием параметра delay_pools. Логика работы следующая: каждый запрашиваемый объект попадает сначала в пул, потом передается на клиента. У каждого пула 2 параметра: скорость заполнения и размер буфера. 
+
+Скорость заполнения пула определяется классом, директива delay_class. 
+
+Возможно несколько вариантов:
+
+общее ограничение скорости загрузки всем;
+общее ограничение скорости загрузки и скорость каждого клиента;
+общее ограничение скорости загрузки, скорости группы (сети), а также каждого клиента;
+все ограничения предыдущего класса и ограничение отдельных пользователей 一 для этого потребуется аутентификация пользователей;
+запросы объединяются по тегам определяемым директивой external_acl.
+Директива delay_parameters  назначает параметры пула.
+
+Тип записей delay_parameters с выбранным классом:
+
+delay_parameters “номер пула” “общие ограничения для всех”
+delay_parameters “номер пула” “общие ограничения для всех” “ограничения для хоста”
+delay_parameters “номер пула” “общие ограничения для всех” “ограничения для подсети” “ограничения для хоста”
+delay_parameters “номер пула” “общие ограничения для всех” “ограничения для подсети” “ограничения для хоста” “ограничения для пользователя”
+delay_parameters “номер пула” “тегированные ограничения”
+Для отдельных клиентов сети используется директива delay_access. Логика работы следующая:
+
+
+    delay_access номер_пула указание имя_acl
+
+Указание осуществляет 2 операции deny и allow 一 запретить и разрешить. Указание действует на тот пул, которому разрешен, и не действует на запрещенные.
+
+Таким образом, delay_access 1 allow gr_1 оказывает воздействия пула №1 для acl gr_1, 
+
+а строка delay_access 1 deny gr_2 не обрабатывает gr_2.
+
+Пример работы
+
+Укажем количество пулов:
+
+
+    delay_pools 2
+
+Присвоим класс первому пулу:
+
+
+    delay_class 1 1
+
+Присвоим класс второму пулу:
+
+
+    delay_class 2 1
+
+Разрешить доступ к пулу №1 пользователям,состоящим в списке us_groupe_1:
+
+
+    delay_access 1 allow us_groupe_1
+
+Запрещаем всем остальным доступ к этому пулу:
+
+
+    delay_access 1 deny all
+
+Разрешить доступ к пулу №2 пользователям, состоящим в списке us_groupe_2:
+
+
+    delay_access 2 allow us_groupe_2
+
+Запрещаем всем остальным доступ в этот пул:
+
+
+    delay_access 2 deny all
+
+Настраиваем параметры пулов. Первому пулу оставляем настройку без ограничения размера буфера и скорости:
+
+
+    delay_parameters 1 -1/-1
+
+Второму пулу ограничиваем размер буфера и скорость до 64 кБ/с:
+
+
+    delay_parameters 2 8000/8000
+
+О настройке Squid на Windows
+Произвести установку возможно как на десктопную операционную систему, так и на серверную.
+
+Скачать установщик для windows возможно здесь. Процесс установки крайне прост.
+
+установщик squid
+Нажимаем кнопка Next
+
+принимаем лицензионное соглашение
+Дальше читаем и принимаем соглашение. Нажимаем Next. Выбираем директорию для установки Squid
+
+выбираем директорию установки
+Даем разрешение на установку от имени администратора. Нажимаем кнопку Install.
+
+разрешение администратора
+Заканчиваем процесс установки, нажимая на Finish.
+
+завершаем установку
+Учитывая установку на диск D в данном примере, файл конфигурации расположен по пути:
+
+D:\Squid\etc\squid\squid.conf
+
+При установке по умолчанию, путь файла конфигурации следующий:
+
+C:\Squid\etc\squid\squid.conf
+
+Все настройки файла конфигурации идентичны с настройкой файла конфигурации в Ubuntu.

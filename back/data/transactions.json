@@ -1,0 +1,103 @@
+{
+  "transactionTypes": [
+    {
+      "id": 1,
+      "name": "normalTransfer",
+      "description": "Standard token transfer between addresses"
+    },
+    {
+      "id": 2,
+      "name": "swapToETH",
+      "description": "Token swap to ETH/BNB/native currency"
+    },
+    {
+      "id": 3,
+      "name": "swapFromETH",
+      "description": "Token swap from ETH/BNB/native currency"
+    },
+    {
+      "id": 4,
+      "name": "liquidityAdd",
+      "description": "Adding liquidity to pair"
+    },
+    {
+      "id": 5,
+      "name": "liquidityRemove",
+      "description": "Removing liquidity from pair"
+    }
+  ],
+  "suspiciousPatterns": [
+    {
+      "id": 1,
+      "name": "multiplePoolTransfers",
+      "description": "Multiple transfers to pool in short period",
+      "detectionLogic": "Same destination to pool multiple times"
+    },
+    {
+      "id": 2,
+      "name": "sandwichAttack",
+      "description": "Potential sandwich attack pattern",
+      "detectionLogic": "Token transfers to/from pool with significant balance changes"
+    },
+    {
+      "id": 3,
+      "name": "contractInteraction",
+      "description": "Unauthorized contract interaction",
+      "detectionLogic": "Transfer to/from non-whitelisted contract"
+    },
+    {
+      "id": 4,
+      "name": "tokenSplit",
+      "description": "Tokens split across multiple addresses",
+      "detectionLogic": "Multiple small transfers to different addresses followed by pool sale"
+    }
+  ],
+  "trackingFields": {
+    "basic": [
+      "sender",
+      "recipient",
+      "timestamp",
+      "amount"
+    ],
+    "extended": [
+      "senderBalanceBefore",
+      "senderBalanceAfter",
+      "recipientBalanceBefore",
+      "recipientBalanceAfter",
+      "pairTokenBalanceBefore",
+      "pairTokenBalanceAfter",
+      "blockData"
+    ]
+  },
+  "penalties": [
+    {
+      "id": 1,
+      "name": "burn",
+      "description": "Transfer tokens to dead address",
+      "severity": "high"
+    },
+    {
+      "id": 2, 
+      "name": "fee",
+      "description": "Apply additional transfer fee",
+      "severity": "medium"
+    },
+    {
+      "id": 3,
+      "name": "block",
+      "description": "Block transaction completely",
+      "severity": "critical"
+    }
+  ],
+  "configOptions": {
+    "mevGuard": true,
+    "transactionLogging": true,
+    "whitelistedAddresses": {
+      "router": "",
+      "factory": "",
+      "owner": "",
+      "pair": ""
+    },
+    "blacklistedAddresses": []
+  }
+}
